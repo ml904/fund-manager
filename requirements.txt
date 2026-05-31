@@ -1,0 +1,4 @@
+flask
+pybit
+python-dotenv
+werkzeug

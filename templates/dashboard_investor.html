@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fund Manager — {{ nom }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-logo">⬡ FUND MANAGER</span>
+  <div class="nav-right">
+    <span class="nav-user">{{ nom }} <span class="badge badge-investor">INVESTOR</span></span>
+    <a href="{{ url_for('logout') }}" class="btn btn-ghost" style="padding:6px 14px;font-size:12px;">Déconnexion</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  <h1 class="page-title">Bonjour, {{ nom }}</h1>
+
+  <!-- KPI Cards -->
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-label">Ma part du fond</div>
+      <div class="card-value blue">{{ "%.4f"|format(part_pct) }}<span style="font-size:16px;color:var(--muted)">%</span></div>
+      <div class="card-sub">Sur la totalité du capital</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Dépôt total</div>
+      <div class="card-value yellow">{{ "%.2f"|format(depot_total) }}<span style="font-size:16px;color:var(--muted)"> USDT</span></div>
+      <div class="card-sub">Capital investi</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Gain / Perte aujourd'hui</div>
+      <div class="card-value {% if gain_aujourd_hui >= 0 %}green{% else %}red{% endif %}">
+        {% if gain_aujourd_hui >= 0 %}+{% endif %}{{ "%.4f"|format(gain_aujourd_hui) }}<span style="font-size:16px;color:var(--muted)"> USDT</span>
+      </div>
+      <div class="card-sub">Calculé sur {{ "%.4f"|format(part_pct) }}% du fond</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Gain total (cumul)</div>
+      <div class="card-value {% if gain_total >= 0 %}green{% else %}red{% endif %}">
+        {% if gain_total >= 0 %}+{% endif %}{{ "%.4f"|format(gain_total) }}<span style="font-size:16px;color:var(--muted)"> USDT</span>
+      </div>
+      <div class="card-sub">Depuis le début</div>
+    </div>
+  </div>
+
+  <!-- Graphique -->
+  {% if historique %}
+  <div class="section">
+    <div class="section-title">Évolution de mes gains (30 jours)</div>
+    <div class="chart-wrap">
+      <canvas id="chartGains" height="100"></canvas>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Historique -->
+  {% if historique %}
+  <div class="section">
+    <div class="section-title">Historique détaillé (30 jours)</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Solde fond (USDT)</th>
+            <th>Ma part (%)</th>
+            <th>Mon gain/perte (USDT)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in historique|reverse %}
+          <tr>
+            <td style="color:var(--muted)">{{ h.date }}</td>
+            <td class="yellow">{{ "%.2f"|format(h.solde) }}</td>
+            <td class="blue">{{ "%.4f"|format(h.part_pct) }}%</td>
+            <td class="{% if h.gain >= 0 %}positive{% else %}negative{% endif %}">
+              {% if h.gain >= 0 %}+{% endif %}{{ "%.4f"|format(h.gain) }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;padding:40px;">
+    <div style="color:var(--muted);font-size:13px;">Aucun historique disponible pour l'instant.<br>Les données apparaîtront après le premier snapshot.</div>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+{% if historique %}
+(function() {
+  const labels = {{ historique | map(attribute='date') | list | tojson }};
+  const gains  = {{ historique | map(attribute='gain')  | list | tojson }};
+
+  const colors = gains.map(v => v >= 0 ? '#00ff88' : '#ff3b5c');
+  const ctx = document.getElementById('chartGains').getContext('2d');
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Gain/Perte USDT',
+        data: gains,
+        backgroundColor: colors,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#c8d8e8', font: { family: 'Space Mono' } } },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5a6a7a', maxRotation: 30, font: { family: 'Space Mono', size: 11 } },
+          grid: { color: '#1e2a35' }
+        },
+        y: {
+          ticks: { color: '#5a6a7a', font: { family: 'Space Mono', size: 11 } },
+          grid: { color: '#1e2a35' }
+        }
+      }
+    }
+  });
+})();
+{% endif %}
+</script>
+
+</body>
+</html>

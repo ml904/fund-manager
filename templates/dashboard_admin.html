@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fund Manager — Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-logo">⬡ FUND MANAGER</span>
+  <div class="nav-right">
+    <span class="nav-user">{{ session['user'] }} <span class="badge badge-admin">ADMIN</span></span>
+    <a href="{{ url_for('logout') }}" class="btn btn-ghost" style="padding:6px 14px;font-size:12px;">Déconnexion</a>
+  </div>
+</nav>
+
+<div class="container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="alerts">
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:28px;">
+    <h1 class="page-title" style="margin-bottom:0;">Dashboard Admin</h1>
+    <form method="POST" action="{{ url_for('manual_snapshot') }}">
+      <button type="submit" class="btn btn-warning">⟳ Snapshot manuel</button>
+    </form>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-label">Solde Bybit (live)</div>
+      <div class="card-value yellow">
+        {% if solde_live is not none %}{{ "%.2f"|format(solde_live) }} <span style="font-size:16px;color:var(--muted)">USDT</span>
+        {% else %}<span style="font-size:16px;color:var(--red)">Erreur API</span>{% endif %}
+      </div>
+      <div class="card-sub">Total dépôts : {{ "%.2f"|format(total_depots) }} USDT</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Gain / Perte du jour</div>
+      <div class="card-value {% if gain_jour >= 0 %}green{% else %}red{% endif %}">
+        {% if gain_jour >= 0 %}+{% endif %}{{ "%.2f"|format(gain_jour) }} <span style="font-size:16px;color:var(--muted)">USDT</span>
+      </div>
+      <div class="card-sub">Dernier snapshot référence</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Performance du jour</div>
+      <div class="card-value {% if pct_jour >= 0 %}green{% else %}red{% endif %}">
+        {% if pct_jour >= 0 %}+{% endif %}{{ "%.2f"|format(pct_jour) }}<span style="font-size:16px;color:var(--muted)">%</span>
+      </div>
+      <div class="card-sub">Variation vs snapshot précédent</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Investisseurs actifs</div>
+      <div class="card-value blue">{{ parts|length }}</div>
+      <div class="card-sub">Parts recalculées automatiquement</div>
+    </div>
+  </div>
+
+  <!-- Graphique -->
+  {% if snapshots %}
+  <div class="section">
+    <div class="section-title">Évolution du solde (30 jours)</div>
+    <div class="chart-wrap">
+      <canvas id="chartSolde" height="90"></canvas>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Tableau investisseurs -->
+  <div class="section">
+    <div class="section-title">Répartition des parts</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Investisseur</th>
+            <th>Dépôt total (USDT)</th>
+            <th>Part (%)</th>
+            <th>Gain jour (USDT)</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in parts %}
+          <tr>
+            <td><strong>{{ inv.nom }}</strong></td>
+            <td class="yellow">{{ "%.2f"|format(inv.depot_total) }}</td>
+            <td class="blue">{{ "%.4f"|format(inv.part_pct) }}%</td>
+            <td class="{% if gain_jour >= 0 %}positive{% else %}negative{% endif %}">
+              {% if gain_jour >= 0 %}+{% endif %}{{ "%.4f"|format(gain_jour * inv.part_pct / 100) }}
+            </td>
+            <td>
+              <form method="POST" action="{{ url_for('delete_investor') }}" style="display:inline;"
+                    onsubmit="return confirm('Supprimer {{ inv.nom }} ?')">
+                <input type="hidden" name="nom" value="{{ inv.nom }}">
+                <button class="btn btn-danger" style="padding:5px 10px;font-size:11px;">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" style="color:var(--muted);text-align:center;">Aucun investisseur</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Historique snapshots -->
+  {% if snapshots %}
+  <div class="section">
+    <div class="section-title">Historique des snapshots (30 jours)</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Solde (USDT)</th><th>Gain/Perte (USDT)</th><th>%</th></tr>
+        </thead>
+        <tbody>
+          {% for s in snapshots|reverse %}
+          <tr>
+            <td style="color:var(--muted)">{{ s.date }}</td>
+            <td class="yellow">{{ "%.2f"|format(s.solde) }}</td>
+            <td class="{% if s.gain_jour >= 0 %}positive{% else %}negative{% endif %}">
+              {% if s.gain_jour >= 0 %}+{% endif %}{{ "%.4f"|format(s.gain_jour) }}
+            </td>
+            <td class="{% if s.pct_jour >= 0 %}positive{% else %}negative{% endif %}">
+              {% if s.pct_jour >= 0 %}+{% endif %}{{ "%.2f"|format(s.pct_jour) }}%
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Panels actions -->
+  <div class="section">
+    <div class="section-title">Gestion des investisseurs</div>
+
+    <!-- Ajouter investisseur -->
+    <div class="panel">
+      <div class="panel-header" onclick="togglePanel('panel-add')">
+        <span>➕ Ajouter un investisseur</span>
+        <span id="icon-panel-add">▼</span>
+      </div>
+      <div class="panel-body" id="panel-add" style="display:none;">
+        <form method="POST" action="{{ url_for('add_investor') }}">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Nom</label>
+              <input type="text" name="nom" required>
+            </div>
+            <div class="form-group">
+              <label>Dépôt initial (USDT)</label>
+              <input type="number" name="depot" min="0" step="0.01" value="0">
+            </div>
+            <div class="form-group">
+              <label>Mot de passe</label>
+              <input type="password" name="password" required>
+            </div>
+            <div class="form-group" style="justify-content:flex-end;">
+              <button type="submit" class="btn btn-success">Créer</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Ajouter des fonds -->
+    <div class="panel">
+      <div class="panel-header" onclick="togglePanel('panel-funds')">
+        <span>💰 Ajouter des fonds</span>
+        <span id="icon-panel-funds">▼</span>
+      </div>
+      <div class="panel-body" id="panel-funds" style="display:none;">
+        <form method="POST" action="{{ url_for('add_funds') }}">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Investisseur</label>
+              <select name="nom" required>
+                <option value="">— Sélectionner —</option>
+                {% for inv in parts %}
+                <option value="{{ inv.nom }}">{{ inv.nom }} ({{ "%.2f"|format(inv.depot_total) }} USDT)</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Montant à ajouter (USDT)</label>
+              <input type="number" name="montant" min="0.01" step="0.01" required>
+            </div>
+            <div class="form-group" style="justify-content:flex-end;">
+              <button type="submit" class="btn btn-primary">Ajouter</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function togglePanel(id) {
+  const el = document.getElementById(id);
+  const icon = document.getElementById('icon-' + id);
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    icon.textContent = '▲';
+  } else {
+    el.style.display = 'none';
+    icon.textContent = '▼';
+  }
+}
+
+{% if snapshots %}
+(function() {
+  const labels = {{ snapshots | map(attribute='date') | list | tojson }};
+  const soldes = {{ snapshots | map(attribute='solde') | list | tojson }};
+
+  const ctx = document.getElementById('chartSolde').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Solde USDT',
+        data: soldes,
+        borderColor: '#f5c518',
+        backgroundColor: 'rgba(245,197,24,0.08)',
+        tension: 0.3,
+        pointBackgroundColor: '#f5c518',
+        pointRadius: 4,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#c8d8e8', font: { family: 'Space Mono' } } },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5a6a7a', maxRotation: 30, font: { family: 'Space Mono', size: 11 } },
+          grid: { color: '#1e2a35' }
+        },
+        y: {
+          ticks: { color: '#5a6a7a', font: { family: 'Space Mono', size: 11 } },
+          grid: { color: '#1e2a35' }
+        }
+      }
+    }
+  });
+})();
+{% endif %}
+</script>
+
+</body>
+</html>
